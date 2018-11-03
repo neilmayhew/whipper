@@ -68,8 +68,8 @@ class Program:
         d = {}
 
         for key, default in list({
-            'fat': True,
-            'special': False
+            'posix': True,
+            'vfat': False
         }.items()):
             value = None
             value = self._config.getboolean('main', 'path_filter_' + key)
