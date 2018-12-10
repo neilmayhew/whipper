@@ -1,20 +1,25 @@
 # -*- Mode: Python; test-case-name: whipper.test.test_common_path -*-
-# -*- coding: utf-8 -*-
 # vi:si:et:sw=4:sts=4:ts=4
 
 from whipper.common import path
-
 from whipper.test import common
 
 
 class FilterTestCase(common.TestCase):
-
     def setUp(self):
-        self._filter_none = path.PathFilter(dot=False, posix=False, vfat=False)
-        self._filter_dot = path.PathFilter(dot=True, posix=False, vfat=False)
-        self._filter_posix = path.PathFilter(dot=False, posix=True, vfat=False)
-        self._filter_vfat = path.PathFilter(dot=False, posix=False, vfat=True)
-        self._filter_all = path.PathFilter(dot=True, posix=True, vfat=True)
+        self._filter_none = path.PathFilter(dot=False, posix=False,
+                                            vfat=False, printable=False)
+        self._filter_dot = path.PathFilter(dot=True, posix=False,
+                                           vfat=False, printable=False)
+        self._filter_posix = path.PathFilter(dot=False, posix=True,
+                                             vfat=False, printable=False)
+        self._filter_vfat = path.PathFilter(dot=False, posix=False,
+                                            vfat=True, printable=False)
+        self._filter_printable = path.PathFilter(dot=False, posix=False,
+                                                 vfat=False, printable=True)
+        self._filter_all = path.PathFilter(dot=True, posix=True,
+                                           vfat=True, printable=True)
+
     def testNone(self):
         part = '<<< $&*!\' "()`{}[]spaceship>>>'
         self.assertEqual(self._filter_posix.filter(part), part)
@@ -28,8 +33,11 @@ class FilterTestCase(common.TestCase):
         self.assertEqual(self._filter_posix.filter(part), 'A Charm_A _Blade')
 
     def testVfat(self):
-        part = 'A Word: F**k you?'
-        self.assertEqual(self._filter_vfat.filter(part), 'A Word_ F__k you_')
+        pass
+
+    def testPrintable(self):
+        part = 'v'
+        self.assertEqual(self._filter_printable.filter(part), 'v')
 
     def testAll(self):
         part = 'Greatest Ever! Soul: The Definitive Collection'
