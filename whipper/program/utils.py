@@ -32,7 +32,7 @@ def unmount_device(device):
     """
     Unmount the given device if it is mounted.
 
-    This usueally happens with automounted data tracks.
+    This usually happens with automounted data tracks.
 
     If the given device is a symlink, the target will be checked.
     """
