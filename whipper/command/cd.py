@@ -20,6 +20,7 @@
 
 import argparse
 import cdio
+import importlib.util
 import os
 import glob
 import logging
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 
 
 SILENT = 0
-MAX_TRIES = 5
+DEFAULT_MAX_RETRIES = 5
 
 DEFAULT_TRACK_TEMPLATE = '%r/%A - %d/%t. %a - %n'
 DEFAULT_DISC_TEMPLATE = '%r/%A - %d/%A - %d'
@@ -289,6 +290,21 @@ Log files will log the path to tracks relative to this directory.
                                  help="whether to continue ripping if "
                                  "the disc is a CD-R",
                                  default=False)
+        self.parser.add_argument('-C', '--cover-art',
+                                 action="store", dest="fetch_cover_art",
+                                 help="fetch cover art and save it as "
+                                 "standalone file, embed into FLAC files "
+                                 "or perform both actions: file, embed, "
+                                 "complete option values respectively",
+                                 choices=['file', 'embed', 'complete'],
+                                 default=None)
+        self.parser.add_argument('r', '--max-retries',
+                                 action="store", dest="max_retries",
+                                 help="number of rip attempts before giving "
+                                 "up if can't rip a track. This defaults to "
+                                 "{}; 0 means "
+                                 "infinity.".format(DEFAULT_MAX_RETRIES),
+                                 default=DEFAULT_MAX_RETRIES)
 
     def handle_arguments(self):
         self.options.output_directory = os.path.expanduser(
@@ -319,6 +335,15 @@ Log files will log the path to tracks relative to this directory.
                 logger.critical(msg)
                 raise ValueError(msg)
 
+        try:
+            self.options.max_retries = int(self.options.max_retries)
+        except ValueError:
+            raise ValueError("max retries' value must be of integer type")
+        if self.options.max_retries == 0:
+            self.options.max_retries = float("inf")
+        elif self.options.max_retries < 0:
+            raise ValueError("number of max retries must be positive")
+
     def doCommand(self):
         self.program.setWorkingDirectory(self.options.working_directory)
         self.program.outdir = self.options.output_directory
@@ -341,8 +366,20 @@ Log files will log the path to tracks relative to this directory.
             logger.info("creating output directory %s", dirname)
             os.makedirs(dirname)
 
-        # FIXME: turn this into a method
+        self.coverArtPath = None
+        if (self.options.fetch_cover_art in {"embed", "complete"} and
+                importlib.util.find_spec("PIL") is None):
+            logger.warning("the cover art option '%s' won't be honored "
+                           "because the 'pillow' module isn't available",
+                           self.options.fetch_cover_art)
+        elif self.options.fetch_cover_art in {"file", "embed", "complete"}:
+            self.coverArtPath = self.program.getCoverArt(
+                                    dirname,
+                                    self.program.metadata.mbid)
+        if self.options.fetch_cover_art == "file":
+            self.coverArtPath = None  # NOTE: avoid image embedding (hacky)
 
+        # FIXME: turn this into a method
         def _ripIfNotRipped(number):
             logger.debug('ripIfNotRipped for track %d', number)
             # we can have a previous result
@@ -388,13 +425,12 @@ Log files will log the path to tracks relative to this directory.
 
             if not os.path.exists(path):
                 logger.debug('path %r does not exist, ripping...', path)
-                tries = 0
                 # we reset durations for test and copy here
                 trackResult.testduration = 0.0
                 trackResult.copyduration = 0.0
                 extra = ""
-                while tries < MAX_TRIES:
-                    tries += 1
+                tries = 1
+                while tries <= self.options.max_retries:
                     if tries > 1:
                         extra = " (try %d)" % tries
                     logger.info('ripping track %d of %d%s: %s',
@@ -412,18 +448,21 @@ Log files will log the path to tracks relative to this directory.
                                               what='track %d of %d%s' % (
                                                   number,
                                                   len(self.itable.tracks),
-                                                  extra))
+                                                  extra),
+                                              coverArtPath=self.coverArtPath)
                         break
                     # FIXME: catching too general exception (Exception)
                     except Exception as e:
                         logger.debug('got exception %r on try %d', e, tries)
+                        tries += 1
 
-                if tries == MAX_TRIES:
+                if tries > self.options.max_retries:
+                    tries -= 1
                     logger.critical('giving up on track %d after %d times',
                                     number, tries)
-                    raise RuntimeError(
-                        "track can't be ripped. "
-                        "Rip attempts number is equal to 'MAX_TRIES'")
+                    raise RuntimeError("track can't be ripped. "
+                                       "Rip attempts number is equal to %d",
+                                       self.options.max_retries)
                 if trackResult.testcrc == trackResult.copycrc:
                     logger.info('CRCs match for track %d', number)
                 else:
@@ -471,6 +510,15 @@ Log files will log the path to tracks relative to this directory.
                 track.indexes[1].relative = 0
                 continue
             _ripIfNotRipped(i + 1)
+
+        # NOTE: Seems like some kind of with … or try: … finally: … clause
+        # would be more appropriate, since otherwise this would potentially
+        # leave stray files lying around in case of crashes etc.
+        # <Freso 2020-01-03, GitHub comment>
+        if (self.options.fetch_cover_art == "embed" and
+                self.coverArtPath is not None):
+            logger.debug('deleting cover art file at: %r', self.coverArtPath)
+            os.remove(self.coverArtPath)
 
         logger.debug('writing cue file for %r', discName)
         self.program.writeCue(discName)
