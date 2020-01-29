@@ -25,8 +25,10 @@ Common functionality and class for all programs using whipper.
 import musicbrainzngs
 import re
 import os
+import shutil
 import time
 
+from tempfile import NamedTemporaryFile
 from whipper.common import accurip, cache, checksum, common, mbngs, path
 from whipper.program import cdrdao, cdparanoia
 from whipper.image import image
@@ -418,6 +420,8 @@ class Program:
                     mbidTrack = track.mbid
                     mbidTrackArtist = track.mbidArtist
                     mbidWorks = track.mbidWorks
+                    composers = track.composers
+                    performers = track.performers
                 except IndexError as e:
                     logger.error('no track %d found, %r', number, e)
                     raise
@@ -451,6 +455,10 @@ class Program:
                 tags['MUSICBRAINZ_ALBUMARTISTID'] = mbidReleaseArtist
                 if len(mbidWorks) > 0:
                     tags['MUSICBRAINZ_WORKID'] = mbidWorks
+                if len(composers) > 0:
+                    tags['COMPOSER'] = composers
+                if len(performers) > 0:
+                    tags['PERFORMER'] = performers
 
         # TODO/FIXME: ISRC tag
 
@@ -472,6 +480,35 @@ class Program:
         stop = track.getIndex(1).absolute - 1
         return start, stop
 
+    def getCoverArt(self, path, release_id):
+        """
+        Get cover art image from Cover Art Archive.
+
+        :param path: where to store the fetched image
+        :type  path: str
+        :param release_id: a release id (self.program.metadata.mbid)
+        :type  release_id: str
+        :returns: path to the downloaded cover art, else `None`
+        :rtype: str or None
+        """
+        cover_art_path = os.path.join(path, 'cover.jpg')
+
+        logger.debug('fetching cover art for release: %r', release_id)
+        try:
+            data = musicbrainzngs.get_image_front(release_id, 500)
+        except musicbrainzngs.ResponseError as e:
+            logger.error('error fetching cover art: %r', e)
+            return
+
+        if data:
+            with NamedTemporaryFile(suffix='.cover.jpg', delete=False) as f:
+                f.write(data)
+            os.chmod(f.name, 0o644)
+            shutil.move(f.name, cover_art_path)
+            logger.debug('cover art fetched at: %r', cover_art_path)
+            return cover_art_path
+        return
+
     @staticmethod
     def verifyTrack(runner, trackResult):
         is_wave = not trackResult.filename.endswith('.flac')
@@ -492,7 +529,7 @@ class Program:
         return ret
 
     def ripTrack(self, runner, trackResult, offset, device, taglist,
-                 overread, what=None):
+                 overread, what=None, coverArtPath=None):
         """
         Ripping the track may change the track's filename as stored in
         trackResult.
@@ -518,7 +555,8 @@ class Program:
                                            offset=offset,
                                            device=device,
                                            taglist=taglist,
-                                           what=what)
+                                           what=what,
+                                           coverArtPath=coverArtPath)
 
         runner.run(t)
 

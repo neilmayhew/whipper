@@ -72,28 +72,30 @@ Whipper still isn't available as an official package in every Linux distribution
 
 ### Docker
 
-You can easily install whipper without needing to care about the required dependencies by making use of the automatically built images hosted on Docker Hub:
+You can easily install whipper without needing to care about the required dependencies by making use of the automatically built images hosted on [Docker Hub](https://hub.docker.com/r/whipperteam/whipper):
 
 `docker pull whipperteam/whipper`
 
+Please note that, right now, Docker Hub only builds whipper images for the `amd64` architecture: if you intend to use them on a different one, you'll need to build the images locally (as explained below).
+
 Alternatively, in case you prefer building Docker images locally, just issue the following command (it relies on the [Dockerfile](https://github.com/whipper-team/whipper/blob/master/Dockerfile) included in whipper's repository):
 
-`docker build -t whipperteam/whipper`
+`docker build -t whipperteam/whipper .`
 
 It's recommended to create an alias for a convenient usage:
 
 ```bash
 alias whipper="docker run -ti --rm --device=/dev/cdrom \
-    -v ~/.config/whipper:/home/worker/.config/whipper \
-    -v ${PWD}/output:/output \
+    --mount type=bind,source=~/.config/whipper,target=/home/worker/.config/whipper \
+    --mount type=bind,source=${PWD}/output,target=/output \
     whipperteam/whipper"
 ```
 
 You should put this e.g. into your `.bash_aliases`. Also keep in mind to substitute the path definitions to something that fits to your needs (e.g. replace `… -v ${PWD}/output:/output …` with `… -v ${HOME}/ripped:/output \ …`).
 
-Make sure you create the configuration directory:
+Essentially, what this does is to map the /home/worker/.config/whipper and ${PWD}/output (or whatever other directory you specified) on your host system to locations inside the Docker container where the files can be written and read. These directories need to exist on your system before you can run the container:
 
-`mkdir -p ~/.config/whipper ${PWD}/output`
+`mkdir -p ~/.config/whipper "${PWD}"/output`
 
 Finally you can test the correct installation:
 
@@ -108,9 +110,10 @@ This is a noncomprehensive summary which shows whipper's packaging status (unoff
 
 [![Packaging status](https://repology.org/badge/vertical-allrepos/whipper.svg)](https://repology.org/metapackage/whipper)
 
-Someone also packaged whipper as snap: [unofficial snap on snapcraft](https://snapcraft.io/whipper).
+- There's a [whipper package available for Exherbo](https://git.exherbo.org/summer/packages/media-sound/whipper/index.html).
+- There's also an [unoffical snap package in Snapcraft](https://snapcraft.io/whipper) (although it seems outdated).
 
-In case you decide to install whipper using an unofficial repository just keep in mind it is your responsibility to verify that the provided content is safe to use.
+**NOTE:** if installing whipper from an unofficial repository please keep in mind it is your responsibility to verify that the provided content is safe to use.
 
 ## Building
 
@@ -132,6 +135,7 @@ Whipper relies on the following packages in order to run correctly and provide a
 - [requests](https://pypi.python.org/pypi/requests), for retrieving AccurateRip database entries
 - [pycdio](https://pypi.python.org/pypi/pycdio/), for drive identification (required for drive offset and caching behavior to be stored in the configuration file).
   - To avoid bugs it's advised to use the most recent `pycdio` version with the corresponding `libcdio` release or, if stuck to old pycdio versions, **0.20**/**0.21** with `libcdio` ≥ **0.90** ≤ **0.94**. All other combinations won't probably work.
+- [discid](https://pypi.org/project/discid/), for calculating Musicbrainz disc id.
 - [ruamel.yaml](https://pypi.org/project/ruamel.yaml/), for generating well formed YAML report logfiles
 - [libsndfile](http://www.mega-nerd.com/libsndfile/), for reading wav files
 - [flac](https://xiph.org/flac/), for reading flac files
@@ -148,10 +152,18 @@ Some dependencies aren't available in the PyPI. They can be probably installed u
 - [flac](https://xiph.org/flac/)
 - [sox](http://sox.sourceforge.net/)
 - [git](https://git-scm.com/) or [mercurial](https://www.mercurial-scm.org/)
+- [libdiscid](https://musicbrainz.org/doc/libdiscid)
 
 PyPI installable dependencies are listed in the [requirements.txt](https://github.com/whipper-team/whipper/blob/master/requirements.txt) file and can be installed issuing the following command:
 
-`pip install -r requirements.txt`
+`pip3 install -r requirements.txt`
+
+### Optional dependencies
+- [pillow](https://pypi.org/project/Pillow/), for completely supporting the cover art feature (`embed` and `complete` option values won't work otherwise).
+
+This dependency isn't listed in the `requirements.txt`, to install it just issue the following command:
+
+`pip3 install Pillow`
 
 ### Fetching the source code
 
@@ -236,18 +248,22 @@ path_filter_vfat = False		; replace illegal chars in VFAT filesystems with _
 path_filter_printable = False		; replace all non printable ASCII chars with _
 
 [musicbrainz]
-server = musicbrainz.org:80	; use MusicBrainz server at host[:port]
+server = https://musicbrainz.org	; use MusicBrainz server at host[:port]
+# use http as scheme if connecting to a plain http server. Example below:
+# server = http://example.com:8080
 
 [drive:HL-20]
-defeats_cache = True		; whether the drive is capable of defeating the audio cache
-read_offset = 6			; drive read offset in positive/negative frames (no leading +)
+defeats_cache = True			; whether the drive is capable of defeating the audio cache
+read_offset = 6				; drive read offset in positive/negative frames (no leading +)
 # do not edit the values 'vendor', 'model', and 'release'; they are used by whipper to match the drive
 
 # command line defaults for `whipper cd rip`
 [whipper.cd.rip]
 unknown = True
 output_directory = ~/My Music
-track_template = new/%%A/%%y - %%d/%%t - %%n	; note: the format char '%' must be represented '%%'
+# Note: the format char '%' must be represented '%%'.
+# Do not add inline comments with an unescaped '%' character (else an 'InterpolationSyntaxError' will occur).
+track_template = new/%%A/%%y - %%d/%%t - %%n
 disc_template =  new/%%A/%%y - %%d/%%A - %%d
 # ...
 ```
@@ -302,7 +318,7 @@ Licensed under the [GNU GPLv3 license](http://www.gnu.org/licenses/gpl-3.0).
 
 ```Text
 Copyright (C) 2009 Thomas Vander Stichele
-Copyright (C) 2016-2019 The Whipper Team: JoeLametta, Samantha Baldwin,
+Copyright (C) 2016-2020 The Whipper Team: JoeLametta, Samantha Baldwin,
                         Merlijn Wajer, Frederik “Freso” S. Olesen, et al.
 
 This program is free software; you can redistribute it and/or modify
